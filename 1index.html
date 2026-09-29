@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>District Whereabouts Beacon</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <!-- QRCodeJS for generating printable door beacon QR codes -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.15); opacity: 0.4; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+    .radar-pulse {
+      animation: pulse-ring 2.8s cubic-bezier(0.24, 0, 0.38, 1) infinite;
+    }
+    @media print {
+      body * {
+        visibility: hidden;
+      }
+      #printModalContent, #printModalContent * {
+        visibility: visible;
+      }
+      #printModalContent {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        margin: 0;
+        padding: 24px;
+        box-shadow: none !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen antialiased flex flex-col justify-between selection:bg-indigo-500 selection:text-white">
+
+  <header class="border-b border-slate-800 bg-slate-950/80 backdrop-blur sticky top-0 z-40">
+    <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-sky-500 text-white shadow-lg shadow-indigo-500/20">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+          <span class="absolute -top-1 -right-1 flex h-3 w-3">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+          </span>
+        </div>
+        <div>
+          <span class="text-xs uppercase tracking-widest font-bold text-indigo-400 block leading-tight">District Live Beacon</span>
+          <h1 id="navPrincipalName" class="text-base font-bold text-white leading-tight">Principal Jordan Ellis</h1>
+        </div>
+      </div>
+
+      <!-- Action Toggles -->
+      <div class="flex items-center gap-2">
+        <button id="qrDoorModalBtn" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5 shadow-sm">
+          <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/>
+          </svg>
+          <span class="hidden sm:inline">Door Plaque</span> QR
+        </button>
+
+        <button id="adminToggleBtn" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition flex items-center gap-1.5">
+          <svg id="adminLockIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+          </svg>
+          <span id="adminToggleText">Admin Mode</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-4xl w-full mx-auto px-4 py-6 flex-1 flex flex-col gap-6">
+
+    <!-- VISITOR LIVE HERO CARD -->
+    <section id="visitorView" class="relative overflow-hidden rounded-3xl bg-slate-800/80 border border-slate-700/80 shadow-2xl p-6 md:p-8 backdrop-blur">
+      <div class="absolute -right-20 -top-20 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+      <div class="absolute -left-20 -bottom-20 w-64 h-64 bg-sky-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+      <!-- Current Status Ribbon -->
+      <div class="flex flex-wrap items-center justify-between gap-3 pb-6 border-b border-slate-700/60">
+        <div class="flex items-center gap-2.5">
+          <span id="statusIndicatorDot" class="w-3 h-3 rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.8)]"></span>
+          <span id="availabilityBadge" class="text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+            Available / On Campus
+          </span>
+        </div>
+        <div class="flex items-center gap-1.5 text-xs text-slate-400">
+          <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <span>Updated: <span id="lastUpdatedTime" class="font-medium text-slate-300">Just now</span></span>
+        </div>
+      </div>
+
+      <div class="py-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Current Active Location</p>
+          <div class="flex items-center gap-3">
+            <h2 id="currentLocationName" class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+              Centennial Arts Academy
+            </h2>
+            <span id="locationTypeBadge" class="text-xs px-2.5 py-0.5 rounded-md bg-indigo-900/60 text-indigo-300 border border-indigo-700/50">
+              Elementary Campus
+            </span>
+          </div>
+          <p id="currentRoomDetail" class="text-sm font-medium text-slate-300 mt-1 flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+            </svg>
+            Room 204 • 4th Grade Observation Block
+          </p>
+        </div>
+
+        <!-- Estimated Return Card -->
+        <div class="bg-slate-900/90 border border-slate-700/70 rounded-2xl p-4 sm:p-5 flex items-center gap-4 min-w-[240px]">
+          <div class="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+            </svg>
+          </div>
+          <div>
+            <p class="text-xs text-slate-400 uppercase font-semibold">Expected Back</p>
+            <p id="expectedReturnTime" class="text-lg font-bold text-white mono">2:45 PM Today</p>
+            <p id="returnDestination" class="text-xs text-slate-400">At District Main Office</p>
+          </div>
+        </div>
+      </div>
+
+      <div id="statusNoteBox" class="mt-2 rounded-2xl bg-indigo-950/40 border border-indigo-500/20 p-4 text-sm text-indigo-200 flex items-start gap-3">
+        <svg class="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <div>
+          <p class="font-semibold text-white">Status Note for Visitors</p>
+          <p id="statusNoteText" class="mt-0.5 text-slate-300">
+            Conducting mid-quarter instructional walk-throughs and meeting with the grade-level PLC leads. If urgent, please contact our administrative assistant or send a direct text message.
+          </p>
+        </div>
+      </div>
+
+      <div class="mt-6 pt-6 border-t border-slate-700/60">
+        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Quick Connect & Assistance</p>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          
+          <a id="btnCallPhone" href="tel:7705550192" class="flex items-center gap-3 p-3 rounded-xl bg-slate-900/60 hover:bg-slate-700 border border-slate-700 transition group">
+            <div class="w-9 h-9 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center group-hover:scale-105 transition">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/>
+              </svg>
+            </div>
+            <div class="overflow-hidden">
+              <p class="text-xs text-slate-400">Mobile Direct</p>
+              <p id="cardPhone" class="text-sm font-semibold text-white truncate">(770) 555-0192</p>
+            </div>
+          </a>
+
+          <a id="btnEmail" href="mailto:principal@district.edu" class="flex items-center gap-3 p-3 rounded-xl bg-slate-900/60 hover:bg-slate-700 border border-slate-700 transition group">
+            <div class="w-9 h-9 rounded-lg bg-sky-500/10 text-sky-400 flex items-center justify-center group-hover:scale-105 transition">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+              </svg>
+            </div>
+            <div class="overflow-hidden">
+              <p class="text-xs text-slate-400">Official Email</p>
+              <p id="cardEmail" class="text-sm font-semibold text-white truncate">jellis@district.org</p>
+            </div>
+          </a>
+
+          <a id="btnSchedule" href="https://calendar.google.com" target="_blank" class="flex items-center gap-3 p-3 rounded-xl bg-slate-900/60 hover:bg-slate-700 border border-slate-700 transition group">
+            <div class="w-9 h-9 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center group-hover:scale-105 transition">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+              </svg>
+            </div>
+            <div class="overflow-hidden">
+              <p class="text-xs text-slate-400">Appointment Calendar</p>
+              <p class="text-sm font-semibold text-white truncate">Book Check-in</p>
+            </div>
+          </a>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- VISITOR INTERACTION SECTION (Streamlined Door Check-In & Sticky Notes) -->
+    <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      
+      <!-- Quick Message Drop for Visitors -->
+      <div class="rounded-2xl bg-slate-800/60 border border-slate-700/70 p-5 flex flex-col justify-between">
+        <div>
+          <h3 class="text-sm font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2 mb-2">
+            <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+            </svg>
+            Leave a Door Note
+          </h3>
+          <p class="text-xs text-slate-400 mb-4">
+            Visiting my office while I'm out? Drop a quick note so I know you stopped by.
+          </p>
+          <div class="space-y-3">
+            <input id="pingVisitorName" type="text" placeholder="Your Name / Title" class="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500">
+            <textarea id="pingVisitorMsg" rows="3" placeholder="Purpose of visit or message..." class="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none"></textarea>
+          </div>
+        </div>
+        <button id="btnSendDoorPing" class="mt-4 w-full py-2.5 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20">
+          <span>Leave Sticky Note</span>
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Live Door Notes Board -->
+      <div class="lg:col-span-2 rounded-2xl bg-slate-800/60 border border-slate-700/70 p-5 flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-bold text-slate-300 flex items-center gap-2">
+              <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+              </svg>
+              Today's Visitor Door Log
+            </h3>
+            <button id="btnClearPings" class="text-xs text-slate-500 hover:text-slate-300 transition">Clear Notes</button>
+          </div>
+          <div id="stickyNotesList" class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-56 overflow-y-auto pr-1">
+            <!-- Dynamic notes -->
+          </div>
+        </div>
+        <p class="text-[11px] text-slate-500 mt-3 pt-3 border-t border-slate-700/50">Notes left here are visible only for today's visitors and clearable in admin mode.</p>
+      </div>
+
+    </section>
+
+    <section id="adminViewPanel" class="hidden rounded-3xl bg-slate-950 border-2 border-indigo-500/50 p-6 md:p-8 shadow-2xl transition-all">
+      <div class="flex flex-wrap items-center justify-between pb-6 mb-6 border-b border-slate-800 gap-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="px-2 py-0.5 text-xs font-bold bg-indigo-500/20 text-indigo-400 rounded border border-indigo-500/30">Admin Unlocked</span>
+            <h2 class="text-xl font-bold text-white">Principal Location & Beacon Controls</h2>
+          </div>
+          <p class="text-xs text-slate-400 mt-1">Changes update immediately for anyone scanning the QR code.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btnQuickOfficeReset" class="px-3 py-1.5 rounded-lg text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700">
+            1-Click: Back at Office
+          </button>
+          <button id="lockAdminBtn" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 transition flex items-center gap-1">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+            </svg>
+            Lock Admin
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Location Selector Tabs -->
+      <div class="mb-6">
+        <label class="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">Preset Schools & Facilities</label>
+        <div id="schoolPresetButtons" class="flex flex-wrap gap-2">
+          <!-- Dynamic School buttons populated via JS -->
+        </div>
+      </div>
+
+      <!-- Main Form Grid -->
+      <form id="beaconAdminForm" class="space-y-6">
+        
+        <!-- Location details -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1">Current Facility / School Name</label>
+            <input type="text" id="editSchoolName" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1">Campus Type / Category</label>
+            <select id="editSchoolType" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500">
+              <option value="District Administration">District Administration</option>
+              <option value="Elementary Campus">Elementary Campus</option>
+              <option value="Middle School Campus">Middle School Campus</option>
+              <option value="High School Campus">High School Campus</option>
+              <option value="Off-Site / Conference">Off-Site / Conference</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Room and Return time -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1">Specific Room / Building Area</label>
+            <input type="text" id="editRoomDetail" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500" placeholder="e.g. Media Center, Room 102">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1">Estimated Return Time</label>
+            <input type="text" id="editReturnTime" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500" placeholder="e.g. 2:30 PM Today">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1">Return Destination</label>
+            <input type="text" id="editReturnLocation" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500" placeholder="e.g. At Principal Office">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1">Availability Level</label>
+            <select id="editAvailability" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500">
+              <option value="available">🟢 Available for Quick Check-ins</option>
+              <option value="busy">🟡 In Meetings / Observations (Delays Expected)</option>
+              <option value="transit">🔵 In Transit Between Schools</option>
+              <option value="dnd">🔴 Do Not Disturb / High-Stakes Evaluation</option>
+              <option value="offsite">🟣 Off-District Duty / Conference</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1">Custom Status Note for Office Door</label>
+            <input type="text" id="editStatusNote" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500" placeholder="Short description for guests and staff">
+          </div>
+        </div>
+
+        <div class="pt-4 border-t border-slate-800">
+          <p class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3">Direct Contact Channels & Calendar</p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Leader Name & Title</label>
+              <input type="text" id="editName" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white">
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Direct Mobile Phone</label>
+              <input type="text" id="editPhone" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white">
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Official Email</label>
+              <input type="text" id="editEmail" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white">
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Calendar Booking URL</label>
+              <input type="url" id="editCalendarUrl" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white" placeholder="https://calendar.google.com">
+            </div>
+          </div>
+        </div>
+
+        <!-- Manage School List & District Facilities -->
+        <div class="pt-4 border-t border-slate-800">
+          <div class="flex items-center justify-between mb-2">
+            <p class="text-xs font-bold text-slate-300 uppercase tracking-wider">Manage Your District Schools & Sites</p>
+            <span class="text-xs text-slate-400">Click &times; to delete or type below to add</span>
+          </div>
+          <div id="editableSchoolList" class="flex flex-wrap gap-2 mb-3">
+            <!-- Dynamically editable badges -->
+          </div>
+          <div class="flex gap-2">
+            <input type="text" id="newSchoolInput" placeholder="Add school or building name..." class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white">
+            <button type="button" id="btnAddSchool" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white">
+              + Add School
+            </button>
+          </div>
+        </div>
+
+        <!-- Form Submit & Action Buttons -->
+        <div class="pt-4 border-t border-slate-800 flex items-center justify-between">
+          <button type="button" id="btnResetDefaults" class="text-xs text-slate-500 hover:text-slate-400 underline">
+            Reset to Sample District
+          </button>
+          <button type="submit" class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold text-sm shadow-lg shadow-emerald-500/20 transition flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+            Save & Publish Live Status
+          </button>
+        </div>
+
+      </form>
+    </section>
+
+  </main>
+
+  <footer class="border-t border-slate-800 py-4 text-center text-xs text-slate-500">
+    <p>District Find-Me Beacon System • Live Real-Time Presence for K-12 Leadership</p>
+  </footer>
+
+  <!-- QR CODE & DOOR PLAQUE MODAL -->
+  <div id="qrModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-md w-full overflow-hidden shadow-2xl relative">
+      <div class="p-6 text-center" id="printModalContent">
+        <div class="inline-flex p-3 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 mb-3">
+          <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+        </div>
+        <h3 class="text-lg font-bold text-white mb-0.5" id="plaquePrincipalName">Principal Jordan Ellis</h3>
+        <p class="text-xs uppercase tracking-wider text-slate-400 font-semibold mb-4">Official Door Beacon Plaque</p>
+        
+        <!-- QR Canvas Container -->
+        <div class="bg-white p-5 rounded-2xl inline-block shadow-inner mx-auto mb-4">
+          <div id="doorQrCode"></div>
+        </div>
+
+        <p class="text-xs text-slate-300 font-medium">Scan this QR code with any smartphone camera to view live location, estimated return time, and district status.</p>
+        
+        <div class="mt-4 pt-4 border-t border-slate-800 flex gap-2 justify-center no-print">
+          <button id="btnPrintPlaque" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+            </svg>
+            Print Office Plaque
+          </button>
+          <button id="btnCloseQrModal" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="pinModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-xs w-full p-6 text-center shadow-2xl">
+      <div class="w-12 h-12 rounded-2xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center mx-auto mb-3">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+        </svg>
+      </div>
+      <h3 class="text-base font-bold text-white mb-1">Leader Authentication</h3>
+      <p class="text-xs text-slate-400 mb-4">Enter your 4-digit PIN to access editing controls. (Default: <span class="text-indigo-400 font-mono">1234</span>)</p>
+
+      <div class="flex justify-center mb-4">
+        <input type="password" maxlength="4" id="pinInput" class="w-36 text-center tracking-[0.5em] text-xl font-bold bg-slate-950 border border-slate-700 rounded-xl py-2 text-white focus:outline-none focus:border-indigo-500 mono" placeholder="••••">
+      </div>
+      <p id="pinErrorMsg" class="text-xs text-rose-400 mb-3 hidden">Incorrect PIN. Try 1234.</p>
+
+      <div class="flex gap-2">
+        <button id="btnCancelPin" class="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold">Cancel</button>
+        <button id="btnSubmitPin" class="flex-1 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold">Unlock</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Box -->
+  <div id="toastNotification" class="fixed bottom-6 right-6 z-50 bg-slate-900 border border-indigo-500/40 text-white text-xs font-semibold px-4 py-3 rounded-2xl shadow-xl transition-all transform translate-y-20 opacity-0 flex items-center gap-2 pointer-events-none">
+    <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+    </svg>
+    <span id="toastMessage">Changes saved and live.</span>
+  </div>
+
+  <script>
+    // Initial Default State
+    const defaultData = {
+      principalName: "Dr. Jordan Ellis, Ed.D.",
+      title: "Executive Principal / District Leader",
+      currentSchool: "Centennial Arts Academy",
+      schoolType: "Elementary Campus",
+      roomDetail: "Room 204 • 4th Grade Observation Block",
+      expectedReturn: "2:45 PM Today",
+      returnLocation: "At District Main Office",
+      availability: "available", // available, busy, transit, dnd, offsite
+      statusNote: "Conducting instructional walk-throughs and meeting with grade-level PLC leads. If urgent, call or text my direct mobile.",
+      phone: "(770) 555-0192",
+      email: "jellis@district.org",
+      calendarUrl: "https://calendar.google.com",
+      adminPin: "1234",
+      schools: [
+        { name: "Centennial Arts Academy", type: "Elementary Campus" },
+        { name: "Fair Street IB World School", type: "Elementary Campus" },
+        { name: "Gainesville Middle School", type: "Middle School Campus" },
+        { name: "Gainesville High School", type: "High School Campus" },
+        { name: "District Central Boardroom", type: "District Administration" },
+        { name: "Support Services & Transportation", type: "District Administration" }
+      ],
+      stickyNotes: [
+        { name: "Marcus Vance (Counseling)", note: "Stopped by regarding the dual-enrollment IEP schedule for Thursday.", time: "11:20 AM" }
+      ]
+    };
+
+    // Load state from memory
+    let appState = JSON.parse(JSON.stringify(defaultData));
+    let isAdminUnlocked = false;
+
+    function showToast(msg) {
+      const toast = document.getElementById('toastNotification');
+      const text = document.getElementById('toastMessage');
+      text.textContent = msg;
+      toast.classList.remove('translate-y-20', 'opacity-0', 'pointer-events-none');
+      setTimeout(() => {
+        toast.classList.add('translate-y-20', 'opacity-0', 'pointer-events-none');
+      }, 3200);
+    }
+
+    const availabilityConfig = {
+      available: {
+        dotClass: 'bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.8)]',
+        badgeClass: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30',
+        label: '🟢 Available for Quick Check-ins'
+      },
+      busy: {
+        dotClass: 'bg-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.8)]',
+        badgeClass: 'bg-amber-500/10 text-amber-300 border-amber-500/30',
+        label: '🟡 In Meetings / Observations (Delays Expected)'
+      },
+      transit: {
+        dotClass: 'bg-sky-500 shadow-[0_0_12px_rgba(14,165,233,0.8)]',
+        badgeClass: 'bg-sky-500/10 text-sky-300 border-sky-500/30',
+        label: '🔵 En Route Between Campuses'
+      },
+      dnd: {
+        dotClass: 'bg-rose-500 shadow-[0_0_12px_rgba(244,63,94,0.8)]',
+        badgeClass: 'bg-rose-500/10 text-rose-300 border-rose-500/30',
+        label: '🔴 High Stakes / Do Not Disturb'
+      },
+      offsite: {
+        dotClass: 'bg-purple-500 shadow-[0_0_12px_rgba(168,85,247,0.8)]',
+        badgeClass: 'bg-purple-500/10 text-purple-300 border-purple-500/30',
+        label: '🟣 Offsite / Regional Conference'
+      }
+    };
+
+    function renderVisitorView() {
+      document.getElementById('navPrincipalName').textContent = appState.principalName;
+      document.getElementById('currentLocationName').textContent = appState.currentSchool;
+      document.getElementById('locationTypeBadge').textContent = appState.schoolType;
+      document.getElementById('currentRoomDetail').innerHTML = `
+        <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+        </svg>
+        ${appState.roomDetail}
+      `;
+      document.getElementById('expectedReturnTime').textContent = appState.expectedReturn;
+      document.getElementById('returnDestination').textContent = appState.returnLocation;
+      document.getElementById('statusNoteText').textContent = appState.statusNote;
+
+      // Contact details
+      document.getElementById('cardPhone').textContent = appState.phone;
+      document.getElementById('btnCallPhone').href = `tel:${appState.phone.replace(/[^0-9]/g, '')}`;
+      document.getElementById('cardEmail').textContent = appState.email;
+      document.getElementById('btnEmail').href = `mailto:${appState.email}`;
+      document.getElementById('btnSchedule').href = appState.calendarUrl;
+      document.getElementById('plaquePrincipalName').textContent = appState.principalName;
+
+      // Status indicator styles
+      const conf = availabilityConfig[appState.availability] || availabilityConfig.available;
+      const dot = document.getElementById('statusIndicatorDot');
+      const badge = document.getElementById('availabilityBadge');
+      dot.className = `w-3 h-3 rounded-full ${conf.dotClass}`;
+      badge.className = `text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full border ${conf.badgeClass}`;
+      badge.textContent = conf.label;
+
+      // Timestamp
+      const now = new Date();
+      document.getElementById('lastUpdatedTime').textContent = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+      renderStickyNotes();
+    }
+
+    function renderStickyNotes() {
+      const list = document.getElementById('stickyNotesList');
+      list.innerHTML = '';
+      if (appState.stickyNotes.length === 0) {
+        list.innerHTML = '<p class="text-xs text-slate-500 col-span-full italic py-4">No visitor notes left today. Ready for check-ins.</p>';
+        return;
+      }
+      appState.stickyNotes.forEach((n) => {
+        const card = document.createElement('div');
+        card.className = 'bg-amber-950/20 border border-amber-500/20 rounded-xl p-3 text-xs';
+        card.innerHTML = `
+          <div class="flex justify-between items-center mb-1">
+            <span class="font-bold text-amber-200">${n.name}</span>
+            <span class="text-[10px] text-slate-400 mono">${n.time}</span>
+          </div>
+          <p class="text-slate-300 leading-snug">${n.note}</p>
+        `;
+        list.appendChild(card);
+      });
+    }
+
+    function populateAdminInputs() {
+      document.getElementById('editSchoolName').value = appState.currentSchool;
+      document.getElementById('editSchoolType').value = appState.schoolType;
+      document.getElementById('editRoomDetail').value = appState.roomDetail;
+      document.getElementById('editReturnTime').value = appState.expectedReturn;
+      document.getElementById('editReturnLocation').value = appState.returnLocation;
+      document.getElementById('editAvailability').value = appState.availability;
+      document.getElementById('editStatusNote').value = appState.statusNote;
+
+      document.getElementById('editName').value = appState.principalName;
+      document.getElementById('editPhone').value = appState.phone;
+      document.getElementById('editEmail').value = appState.email;
+      document.getElementById('editCalendarUrl').value = appState.calendarUrl;
+
+      renderSchoolPresets();
+    }
+
+    function renderSchoolPresets() {
+      const container = document.getElementById('schoolPresetButtons');
+      const editableList = document.getElementById('editableSchoolList');
+      container.innerHTML = '';
+      editableList.innerHTML = '';
+
+      appState.schools.forEach((sch, i) => {
+        // Quick 1-click select preset button
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+          appState.currentSchool === sch.name 
+            ? 'bg-indigo-600 text-white border-indigo-500 shadow-md' 
+            : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-slate-500'
+        }`;
+        btn.textContent = sch.name;
+        btn.addEventListener('click', () => {
+          document.getElementById('editSchoolName').value = sch.name;
+          document.getElementById('editSchoolType').value = sch.type;
+          showToast(`Selected "${sch.name}". Click "Save & Publish" to update.`);
+          renderSchoolPresets();
+        });
+        container.appendChild(btn);
+
+        // Editable tag inside the manager
+        const tag = document.createElement('span');
+        tag.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs bg-slate-900 border border-slate-700 text-slate-300';
+        tag.innerHTML = `
+          <span>${sch.name}</span>
+          <button type="button" class="text-rose-400 hover:text-rose-300 font-bold ml-1" data-index="${i}">&times;</button>
+        `;
+        tag.querySelector('button').addEventListener('click', () => {
+          if (appState.schools.length <= 1) {
+            showToast("You need at least one campus in your directory.");
+            return;
+          }
+          appState.schools.splice(i, 1);
+          renderSchoolPresets();
+          showToast("Campus removed.");
+        });
+        editableList.appendChild(tag);
+      });
+    }
+
+    const adminToggleBtn = document.getElementById('adminToggleBtn');
+    const adminViewPanel = document.getElementById('adminViewPanel');
+    const pinModal = document.getElementById('pinModal');
+    const pinInput = document.getElementById('pinInput');
+    const pinErrorMsg = document.getElementById('pinErrorMsg');
+
+    adminToggleBtn.addEventListener('click', () => {
+      if (isAdminUnlocked) {
+        adminViewPanel.scrollIntoView({ behavior: 'smooth' });
+      } else {
+        pinInput.value = '';
+        pinErrorMsg.classList.add('hidden');
+        pinModal.classList.remove('hidden');
+        pinInput.focus();
+      }
+    });
+
+    document.getElementById('btnCancelPin').addEventListener('click', () => {
+      pinModal.classList.add('hidden');
+    });
+
+    document.getElementById('btnSubmitPin').addEventListener('click', verifyPin);
+    pinInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') verifyPin();
+    });
+
+    function verifyPin() {
+      if (pinInput.value === appState.adminPin) {
+        isAdminUnlocked = true;
+        pinModal.classList.add('hidden');
+        adminViewPanel.classList.remove('hidden');
+        document.getElementById('adminToggleText').textContent = 'Admin Active';
+        document.getElementById('adminToggleBtn').classList.replace('bg-indigo-600', 'bg-emerald-600');
+        populateAdminInputs();
+        adminViewPanel.scrollIntoView({ behavior: 'smooth' });
+        showToast("Authenticated as Leader. Full permissions enabled.");
+      } else {
+        pinErrorMsg.classList.remove('hidden');
+      }
+    }
+
+    document.getElementById('lockAdminBtn').addEventListener('click', () => {
+      isAdminUnlocked = false;
+      adminViewPanel.classList.add('hidden');
+      document.getElementById('adminToggleText').textContent = 'Admin Mode';
+      document.getElementById('adminToggleBtn').classList.replace('bg-emerald-600', 'bg-indigo-600');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      showToast("Admin session locked.");
+    });
+
+    document.getElementById('beaconAdminForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      appState.currentSchool = document.getElementById('editSchoolName').value.trim() || appState.currentSchool;
+      appState.schoolType = document.getElementById('editSchoolType').value;
+      appState.roomDetail = document.getElementById('editRoomDetail').value.trim() || "Main Building";
+      appState.expectedReturn = document.getElementById('editReturnTime').value.trim() || "Later Today";
+      appState.returnLocation = document.getElementById('editReturnLocation').value.trim() || "District Office";
+      appState.availability = document.getElementById('editAvailability').value;
+      appState.statusNote = document.getElementById('editStatusNote').value.trim() || "On district duty.";
+
+      appState.principalName = document.getElementById('editName').value.trim() || appState.principalName;
+      appState.phone = document.getElementById('editPhone').value.trim() || appState.phone;
+      appState.email = document.getElementById('editEmail').value.trim() || appState.email;
+      appState.calendarUrl = document.getElementById('editCalendarUrl').value.trim() || appState.calendarUrl;
+
+      renderVisitorView();
+      showToast("Live beacon successfully published!");
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    // 1-Click Back at Office Shortcut
+    document.getElementById('btnQuickOfficeReset').addEventListener('click', () => {
+      document.getElementById('editSchoolName').value = "District Main Office";
+      document.getElementById('editSchoolType').value = "District Administration";
+      document.getElementById('editRoomDetail').value = "Principal Executive Suite - Room 100";
+      document.getElementById('editReturnTime').value = "Currently In Office";
+      document.getElementById('editReturnLocation').value = "Right Here";
+      document.getElementById('editAvailability').value = "available";
+      document.getElementById('editStatusNote').value = "Currently at my desk. Feel free to knock or come on in!";
+      showToast("Preset loaded. Click 'Save & Publish' to push live.");
+    });
+
+    // Add new custom school
+    document.getElementById('btnAddSchool').addEventListener('click', () => {
+      const input = document.getElementById('newSchoolInput');
+      const val = input.value.trim();
+      if (!val) return;
+      appState.schools.push({ name: val, type: "District Campus" });
+      input.value = '';
+      renderSchoolPresets();
+      showToast(`Added "${val}" to your quick school list.`);
+    });
+
+    // Reset Defaults
+    document.getElementById('btnResetDefaults').addEventListener('click', () => {
+      appState = JSON.parse(JSON.stringify(defaultData));
+      populateAdminInputs();
+      renderVisitorView();
+      showToast("Reset to sample district configuration.");
+    });
+
+    document.getElementById('btnSendDoorPing').addEventListener('click', () => {
+      const nameInput = document.getElementById('pingVisitorName');
+      const msgInput = document.getElementById('pingVisitorMsg');
+      const name = nameInput.value.trim();
+      const msg = msgInput.value.trim();
+
+      if (!name || !msg) {
+        showToast("Please enter both your name and a brief message.");
+        return;
+      }
+
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      appState.stickyNotes.unshift({ name, note: msg, time: timeStr });
+      nameInput.value = '';
+      msgInput.value = '';
+      renderStickyNotes();
+      showToast("Your note has been placed on the principal's door beacon!");
+    });
+
+    document.getElementById('btnClearPings').addEventListener('click', () => {
+      appState.stickyNotes = [];
+      renderStickyNotes();
+      showToast("Visitor notes cleared.");
+    });
+
+    const qrModal = document.getElementById('qrModal');
+    let qrInstance = null;
+
+    document.getElementById('qrDoorModalBtn').addEventListener('click', () => {
+      qrModal.classList.remove('hidden');
+      if (!qrInstance) {
+        const qrContainer = document.getElementById('doorQrCode');
+        qrContainer.innerHTML = '';
+        qrInstance = new QRCode(qrContainer, {
+          text: window.location.href,
+          width: 190,
+          height: 190,
+          colorDark: "#0f172a",
+          colorLight: "#ffffff",
+          correctLevel: QRCode.CorrectLevel.H
+        });
+      }
+    });
+
+    document.getElementById('btnCloseQrModal').addEventListener('click', () => {
+      qrModal.classList.add('hidden');
+    });
+
+    document.getElementById('btnPrintPlaque').addEventListener('click', () => {
+      window.print();
+    });
+
+    // Close modals on outside click
+    window.addEventListener('click', (e) => {
+      if (e.target === qrModal) qrModal.classList.add('hidden');
+      if (e.target === pinModal) pinModal.classList.add('hidden');
+    });
+
+    // Initial render
+    window.addEventListener('DOMContentLoaded', () => {
+      renderVisitorView();
+    });
+  </script>
+</body>
+</html>
